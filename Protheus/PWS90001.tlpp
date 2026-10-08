@@ -1,0 +1,455 @@
+#include "tlpp-core.th"
+#include "tlpp-rest.th"
+#include "protheus.ch"
+#include "totvs.ch"
+#include "tbiconn.ch"
+#include "topconn.ch"
+
+/*-------------------------------------
+Gera carga de documentos módulo QDO
+-------------------------------------*/
+@Post("pws90001/qdo/doc")
+User Function PWS90001()
+  Local jBody      := ''
+  Local oJsonRet   := JsonObject():New()
+  Local cResponse  := ''
+  Local cCodTp     := ''
+  Local cMatricula := ''
+  Local cFilDoc    := ''
+  Local cDeptoD    := ''
+  Local cCodDoc    := ''
+  Local cChave     := ''
+  Local cTpDistr   := ''
+  Local cCargo     := ''
+  Local cNomDoc    := ''
+  Local cFilUser   := ''
+  Local cCCUser    := ''
+  Local cHora      := ''
+  Local cFilVazia  := ' '
+  Local cDocIE     := 'E'
+  Local cStatusDoc := 'D'
+  Local cObsolDoc  := 'N'
+  Local cCancelDoc := 'N'
+  Local cTreinaDoc := '2'
+  Local cQuestDoc  := '2'
+  Local cRevInvDoc := 'YYY'
+  Local aDados     := {}
+  Local aUserData  := {}
+  Local aQdhDados  := {}
+  Local aQdgDados  := {}
+  Local aQdzDados  := {}
+  Local aQd0Dados  := {}
+  Local aQdjDados  := {}
+  Local aQa2Dados  := {}
+  Local aQd1Dados  := {}
+
+  //Private cChave   := M->QDH_FILIAL + M->QDH_DOCTO + " RV:" + M->QDH_RV
+
+  //RpcSetType(3)
+	//RpcSetEnv('01', '01020011' ,,,"QDO","QDOA050")
+
+  jBody := JsonObject():New()
+  jBody:FromJson(oRest:GetBodyRequest())
+
+  If (jBody <> Nil)
+    cCodTp     := jBody:GetJsonText("QDH_CODTP")
+    cFilDoc    := jBody:GetJsonText("QDH_FILIAL")
+    cMatricula := jBody:GetJsonText("QDH_MAT")
+
+    If ((cCodTp != Nil .OR. !Empty(cCodTp))) 
+      aDados := buscaCodigoDocumento(cFilVazia, cCodTp)
+    Else
+      oRest:SetStatusCode(400)
+      oJsonRet['message'] := "parametro QDH_CODTP invalido ou nao informado"
+      oJsonRet['documento'] := "ERRO"
+      cResponse := '{"message": "parametro QDH_CODTP invalido ou nao informado"}'
+    EndIf
+
+    If (cMatricula != Nil .OR. !Empty(cMatricula))
+      aUserData := buscaDadosLiderProcesso(cMatricula)
+    Else
+      oRest:SetStatusCode(400)
+      oJsonRet['message'] := "parametro QDH_MAT invalido ou nao informado"
+      oJsonRet['documento'] := "ERRO"
+      cResponse := '{"message": "parametro QDH_MAT invalido ou nao informado"}'  
+    EndIf
+
+    //cChvAux := '0102PRO-SGL-0009 RV:000'
+    cFilUser := aUserData[1]
+    cCCUser  := aUserData[2]
+    cTpDistr := aUserData[3]
+    cCargo   := aUserData[4]
+    cCodDoc  := aDados[1]
+    cDeptoD  := aDados[2]
+    cChave   := QA_CvKey(aDados[1],"QDH",2)
+    cNomDoc  := StrZero(Val(QA_SEQU("QDH",6,"N")),6)+SubStr(StrZero(year(dDataBase),4),3,2)+jBody:GetJsonText("QDH_NOMDOC") //Gera sequencial do nome do arquivo.
+    cHora    := Substr(Time(), 1, 5)
+
+
+    aAdd(aQdhDados, cFilVazia                      ) // QDH_FILIAL
+    aAdd(aQdhDados, cCodTp                         ) // QDH_CODTP 
+    aAdd(aQdhDados, cCodDoc                        ) // QDH_DOCTO 
+    aAdd(aQdhDados, jBody:GetJsonText("QDH_RV")    ) // QDH_RV    
+    aAdd(aQdhDados, cDocIE                         ) // QDH_DTOIE 
+    aAdd(aQdhDados, jBody:GetJsonText("QDH_CODASS")) // QDH_CODASS
+    aAdd(aQdhDados, jBody:GetJsonText("QDH_TITULO")) // QDH_TITULO
+    aAdd(aQdhDados, cDeptoD                        ) // QDH_DEPTOD
+    aAdd(aQdhDados, cStatusDoc                     ) // QDH_STATUS
+    aAdd(aQdhDados, cCCUser                        ) // QDH_DEPTOE
+    aAdd(aQdhDados, dDataBase                      ) // QDH_DTCAD 
+    aAdd(aQdhDados, cHora                          ) // QDH_HORCAD
+    aAdd(aQdhDados, cFilUser                       ) // QDH_FILMAT
+    aAdd(aQdhDados, jBody:GetJsonText("QDH_MAT")   ) // QDH_MAT   
+    aAdd(aQdhDados, cChave                         ) // QDH_CHAVE 
+    aAdd(aQdhDados, cObsolDoc                      ) // QDH_OBSOL 
+    aAdd(aQdhDados, cNomDoc                        ) // QDH_NOMDOC
+    //aAdd(aQdhDados, jBody:GetJsonText("QDH_NOMDOC")) // QDH_NOMDOC
+    aAdd(aQdhDados, cCancelDoc                     ) // QDH_CANCEL
+    aAdd(aQdhDados, cTreinaDoc                     ) // QDH_TREINA
+    aAdd(aQdhDados, cQuestDoc                      ) // QDH_QUEST 
+    aAdd(aQdhDados, cRevInvDoc                     ) // QDH_REVINV
+    aAdd(aQdhDados, jBody:GetJsonText("QDH_SIGILO")) // QDH_SIGILO
+    aAdd(aQdhDados, aDados[3]                      ) // QDH_FILDEP
+
+    incluiQdh(aQdhDados) // INSERE DOCUMENTOS
+
+    aAdd(aQdgDados, cFilVazia                      ) // QDG_FILIAL
+    aAdd(aQdgDados, cCodDoc                        ) // QDG_DOCTO
+    aAdd(aQdgDados, jBody:GetJsonText("QDH_RV")    ) // QDG_RV
+    aAdd(aQdgDados, cFilUser                       ) // QDG_FILMAT
+    aAdd(aQdgDados, cCCUser                        ) // QDG_DEPTO
+    aAdd(aQdgDados, jBody:GetJsonText("QDH_MAT")   ) // QDG_MAT
+    aAdd(aQdgDados, 1                              ) // QDG_NCOP
+    aAdd(aQdgDados, '3'                            ) // QDG_TPRCBT
+    aAdd(aQdgDados, 'S'                            ) // QDG_RECEB
+    aAdd(aQdgDados, 'D'                            ) // QDG_TIPO
+
+    incluiQdg(aQdgDados) // INSERE DESTINATARIOS
+
+    aAdd(aQdzDados, cFilVazia                      ) // QDZ_FILIAL
+    aAdd(aQdzDados, cCodDoc                        ) // QDZ_DOCTO
+    aAdd(aQdzDados, jBody:GetJsonText("QDH_RV")    ) // QDZ_RV
+    aAdd(aQdzDados, cFilUser                       ) // QDZ_FILMAT
+    aAdd(aQdzDados, cCCUser                        ) // QDZ_DEPTO
+    aAdd(aQdzDados, jBody:GetJsonText("QDH_MAT")   ) // QDZ_MAT
+    aAdd(aQdzDados, '1'                            ) // QDZ_DIGITA
+
+    incluiQdz(aQdzDados) // INSERE DISTRIBUIDOR DE DOCUMENTOS
+
+    aAdd(aQd0Dados, cFilVazia                      ) // QD0_FILIAL
+    aAdd(aQd0Dados, cCodDoc                        ) // QD0_DOCTO
+    aAdd(aQd0Dados, jBody:GetJsonText("QDH_RV")    ) // QD0_RV
+    aAdd(aQd0Dados, 'E'                            ) // QD0_AUT
+    aAdd(aQd0Dados, '01'                           ) // QD0_ORDEM
+    aAdd(aQd0Dados, cFilUser                       ) // QD0_FILMAT
+    aAdd(aQd0Dados, jBody:GetJsonText("QDH_MAT")   ) // QD0_MAT
+    aAdd(aQd0Dados, 0                              ) // QD0_TLIM
+    aAdd(aQd0Dados, cCCUser                        ) // QD0_DEPTO
+
+    incluiQd0(aQd0Dados) // INSERE RESPONSAVEIS PELO DOCUMENTO
+    
+    aAdd(aQdjDados, cFilVazia                      ) // QDJ_FILIAL
+    aAdd(aQdjDados, cCodDoc                        ) // QDJ_DOCTO
+    aAdd(aQdjDados, jBody:GetJsonText("QDH_RV")    ) // QDH_RV
+    aAdd(aQdjDados, cFilUser                       ) // QDJ_FILMAT
+    aAdd(aQdjDados, cCCUser                        ) // QDJ_DEPTO
+    aAdd(aQdjDados, 'D'                            ) // QDJ_TIPO
+
+    incluiQdj(aQdjDados) // INSERE DESTINATARIOS
+
+
+    aAdd(aQd1Dados, cFilVazia                   )  // QD1_FILIAL
+    aAdd(aQd1Dados, cCodDoc                     )  // QD1_DOCTO 
+    aAdd(aQd1Dados, jBody:GetJsonText("QDH_RV") )  // QD1_RV    
+    aAdd(aQd1Dados, cFilUser                    )  // QD1_FILMAT
+    aAdd(aQd1Dados, jBody:GetJsonText("QDH_MAT"))  // QD1_MAT   
+    aAdd(aQd1Dados, cCCUser                     )  // QD1_DEPTO 
+    aAdd(aQd1Dados, dDataBase                   )  // QD1_DTGERA
+    aAdd(aQd1Dados, cHora                       )  // QD1_HRGERA
+    aAdd(aQd1Dados, 'D'                         )  // QD1_TPPEND
+    aAdd(aQd1Dados, 'P'                         )  // QD1_PENDEN
+    aAdd(aQd1Dados, cTpDistr                    )  // QD1_TPDIST
+    aAdd(aQd1Dados, 'N'                         )  // QD1_LEUDOC
+    aAdd(aQd1Dados, cCargo                      )  // QD1_CARGO 
+    aAdd(aQd1Dados, 'N'                         )  // QD1_DISTNE
+    aAdd(aQd1Dados, 0                           )  // QD1_NTRESP
+
+
+    incluiQd1(aQd1Dados) // INSERE PENDENCIA DE DIGITACAO
+
+
+    
+    aAdd(aQa2Dados, cFilDoc                        ) // QA2_FILIAL
+    aAdd(aQa2Dados, cChave                         ) // QA2_CHAVE
+    aAdd(aQa2Dados, jBody:GetJsonText("ID_SESUITE")) // QA2_TEXTO -- PARA OBJETIVO
+    
+    incluiQa2(aQa2Dados) // INSERE REVISAO E OBJETIVO DO DOCUMENTO
+
+
+    oRest:SetStatusCode(201)
+    oJsonRet['message'] := "dados incluidos com sucesso"
+    oJsonRet['documento'] := cNomDoc
+    cResponse := '{"message": "dados incluidos com sucesso"}'
+        
+  Else
+    oRest:SetStatusCode(400)
+    oJsonRet['message'] := "bad request"
+    oJsonRet['documento'] := "ERRO"
+    cResponse := '{"message": "bad request"}'
+  EndIf
+  
+//Return oRest:setResponse(cResponse)
+Return oRest:setResponse(oJsonRet:ToJson())
+
+
+/*-------------------------------------
+Pega o Código Inteligente do Documento
+-------------------------------------*/
+Static Function buscaCodigoDocumento(cFilVazia, cCodTp)
+  Local cSiglaDoc    := ''
+  Local cContadorDoc := ''
+  Local cAuxCont     := ''
+  Local cDocAux      := ''
+  Local cDepto       := ''
+  Local cFilDep      := ''
+  Local aRetorno     := {}
+  
+  cQryQD2 := "SELECT * FROM " + RetSQLName("QD2") + " WHERE D_E_L_E_T_ = ' '"
+	cQryQD2 += " AND QD2_FILIAL = '" + cFilVazia + "'"
+	cQryQD2 += " AND QD2_CODTP = '" + cCodTp + "'"
+
+  TCQuery cQryQD2 New Alias "QRY_QD2"
+	QRY_QD2->(DbGoTop())
+
+  If (!QRY_QD2->(Eof()))
+    cSiglaDoc := Alltrim(QRY_QD2->QD2_SIGLA)
+    cFilDep   := Alltrim(QRY_QD2->QD2_FILDEP)
+  Else
+  EndIf
+  QRY_QD2->(DbCloseArea())
+
+
+  cQryQDH := "SELECT MAX(QDH_DOCTO) AS QDH_DOCTO FROM " + RetSQLName("QDH") + " WHERE D_E_L_E_T_ = ' '"
+	cQryQDH += " AND QDH_FILIAL = '" + cFilVazia + "'"
+	cQryQDH += " AND QDH_CODTP = '" + cCodTp + "'"
+
+  TCQuery cQryQDH New Alias "QRY_QDH"
+	QRY_QDH->(DbGoTop())
+
+  If (!QRY_QDH->(Eof()))
+
+    cAuxCont     := Right(Alltrim(QRY_QDH->QDH_DOCTO),4)
+    cContadorDoc := StrZero(Val(AllTrim(cAuxCont)) + 1, 4)
+  Else
+  EndIf
+  QRY_QDH->(DbCloseArea())
+
+  cQryQD2 := "SELECT * FROM " + RetSQLName("QD2") + " WHERE D_E_L_E_T_ = ' '"
+	cQryQD2 += " AND QD2_FILIAL = '" + cFilVazia + "'"
+	cQryQD2 += " AND QD2_CODTP = '" + cCodTp + "'"
+
+  TCQuery cQryQD2 New Alias "QRY_QD2"
+	QRY_QD2->(DbGoTop())
+
+  If (!QRY_QD2->(Eof()))
+    cDepto := Alltrim(QRY_QD2->QD2_DEPTO)
+  Else
+  EndIf
+  QRY_QD2->(DbCloseArea())
+
+  cDocAux := cSiglaDoc + cContadorDoc
+
+  aAdd(aRetorno, cDocAux)
+  aAdd(aRetorno, cDepto)
+  aAdd(aRetorno, cFilDep)
+  
+
+Return aRetorno
+
+
+/*-------------------------------------
+Pega Dados do Líder de Processo
+-------------------------------------*/
+Static Function buscaDadosLiderProcesso(cMatricula)
+
+  Local aUserRet := {}
+
+  cQryQAA := "SELECT * FROM " + RetSQLName("QAA") + " WHERE D_E_L_E_T_ = ' ' "
+	cQryQAA += " AND QAA_STATUS = '1' "
+	cQryQAA += " AND QAA_MAT = '" + cMatricula + "'"
+
+  TCQuery cQryQAA New Alias "QRY_QAA"
+	QRY_QAA->(DbGoTop())
+
+  If (!QRY_QAA->(Eof()))
+    aAdd(aUserRet, Alltrim(QRY_QAA->QAA_FILIAL))
+    aAdd(aUserRet, Alltrim(QRY_QAA->QAA_CC))
+    aAdd(aUserRet, Alltrim(QRY_QAA->QAA_TPRCBT))
+    aAdd(aUserRet, Alltrim(QRY_QAA->QAA_CODFUN))
+  Else
+  EndIf
+  QRY_QAA->(DbCloseArea())
+
+Return aUserRet
+
+
+/*-------------------------------------
+Insere Dados na QDH
+-------------------------------------*/
+Static Function incluiQdh(aQdhDados)
+  RecLock('QDH', .T.)
+	QDH->QDH_FILIAL := aQdhDados[1]
+	QDH->QDH_CODTP  := aQdhDados[2]
+	QDH->QDH_DOCTO  := aQdhDados[3]
+	QDH->QDH_RV     := aQdhDados[4]
+	QDH->QDH_DTOIE  := aQdhDados[5]
+	QDH->QDH_CODASS := aQdhDados[6]
+	QDH->QDH_TITULO := aQdhDados[7]
+	QDH->QDH_DEPTOD := aQdhDados[8]
+	QDH->QDH_STATUS := aQdhDados[9]
+	QDH->QDH_DEPTOE := aQdhDados[10]
+	QDH->QDH_DTCAD  := dDataBase
+	QDH->QDH_HORCAD := aQdhDados[12]
+	QDH->QDH_FILMAT := aQdhDados[13]
+	QDH->QDH_MAT    := aQdhDados[14]
+	QDH->QDH_CHAVE  := aQdhDados[15]
+	QDH->QDH_OBSOL  := aQdhDados[16]
+	QDH->QDH_NOMDOC := aQdhDados[17]
+	QDH->QDH_CANCEL := aQdhDados[18]
+	QDH->QDH_TREINA := aQdhDados[19]
+	QDH->QDH_QUEST  := aQdhDados[20]
+	QDH->QDH_REVINV := aQdhDados[21]
+	QDH->QDH_SIGILO := aQdhDados[22]
+	QDH->QDH_FILDEP := aQdhDados[23]
+  QDH->(MsUnlock())
+
+Return
+
+/*-------------------------------------
+Insere Dados na QDG
+-------------------------------------*/
+Static Function incluiQdg(aQdgDados)
+  RecLock('QDG', .T.)
+  QDG->QDG_FILIAL := aQdgDados[1]
+  QDG->QDG_DOCTO  := aQdgDados[2]
+  QDG->QDG_RV     := aQdgDados[3]
+  QDG->QDG_FILMAT := aQdgDados[4]
+  QDG->QDG_DEPTO  := aQdgDados[5]
+  QDG->QDG_MAT    := aQdgDados[6]
+  QDG->QDG_NCOP   := aQdgDados[7]
+  QDG->QDG_TPRCBT := aQdgDados[8]
+  QDG->QDG_RECEB  := aQdgDados[9]
+  QDG->QDG_TIPO   := aQdgDados[10]
+  QDG->(MsUnLock())
+Return
+
+
+/*-------------------------------------
+Insere Dados na QDZ
+-------------------------------------*/
+Static Function incluiQdz(aQdzDados)
+  RecLock('QDZ', .T.)
+  QDZ->QDZ_FILIAL := aQdzDados[1]
+  QDZ->QDZ_DOCTO  := aQdzDados[2]
+  QDZ->QDZ_RV     := aQdzDados[3]
+  QDZ->QDZ_FILMAT := aQdzDados[4]
+  QDZ->QDZ_DEPTO  := aQdzDados[5]
+  QDZ->QDZ_MAT    := aQdzDados[6]
+  QDZ->QDZ_DIGITA := aQdzDados[7]
+  QDZ->(MsUnLock())
+Return
+
+/*-------------------------------------
+Insere Dados na QD0
+-------------------------------------*/
+Static Function incluiQd0(aQd0Dados)
+  RecLock('QD0', .T.)
+  QD0->QD0_FILIAL := aQd0Dados[1]
+  QD0->QD0_DOCTO  := aQd0Dados[2]
+  QD0->QD0_RV     := aQd0Dados[3]
+  QD0->QD0_AUT    := aQd0Dados[4]
+  QD0->QD0_ORDEM  := aQd0Dados[5]
+  QD0->QD0_FILMAT := aQd0Dados[6]
+  QD0->QD0_MAT    := aQd0Dados[7]
+  QD0->QD0_TLIM   := aQd0Dados[8]
+  QD0->QD0_DEPTO  := aQd0Dados[9]
+  QD0->(MsUnLock())
+Return
+
+
+/*-------------------------------------
+Insere Dados na QD1
+-------------------------------------*/
+
+Static Function incluiQd1(aQd1Dados)
+  RecLock('QD1', .T.)
+  QD1->QD1_FILIAL := aQd1Dados[1]
+  QD1->QD1_DOCTO  := aQd1Dados[2]
+  QD1->QD1_RV     := aQd1Dados[3]
+  QD1->QD1_FILMAT := aQd1Dados[4]
+  QD1->QD1_MAT    := aQd1Dados[5]
+  QD1->QD1_DEPTO  := aQd1Dados[6]
+  QD1->QD1_DTGERA := aQd1Dados[7]
+  QD1->QD1_HRGERA := aQd1Dados[8]
+  QD1->QD1_TPPEND := aQd1Dados[9]
+  QD1->QD1_PENDEN := aQd1Dados[10]
+  QD1->QD1_TPDIST := aQd1Dados[11]
+  QD1->QD1_LEUDOC := aQd1Dados[12]
+  QD1->QD1_CARGO  := aQd1Dados[13]
+  QD1->QD1_DISTNE := aQd1Dados[14]
+  QD1->QD1_NTRESP := aQd1Dados[15]
+
+  QD1->(MsUnLock())
+Return
+
+/*-------------------------------------
+Insere Dados na QDJ
+-------------------------------------*/
+Static Function incluiQdj(aQdjDados)
+  RecLock('QDJ', .T.)
+  QDJ->QDJ_FILIAL := aQdjDados[1]
+  QDJ->QDJ_DOCTO  := aQdjDados[2]
+  QDJ->QDJ_RV     := aQdjDados[3]
+  QDJ->QDJ_FILMAT := aQdjDados[4]
+  QDJ->QDJ_DEPTO  := aQdjDados[5]
+  QDJ->QDJ_TIPO   := aQdjDados[6]
+  QDJ->(MsUnLock())
+Return
+
+
+/*-------------------------------------
+Insere Dados na QA2
+-------------------------------------*/
+Static Function incluiQa2(aQa2Dados)
+  RecLock('QA2', .T.)
+  QA2->QA2_FILIAL := aQa2Dados[1]
+  QA2->QA2_CHAVE  := aQa2Dados[2]
+  QA2->QA2_ESPEC  := 'OBJ'
+  QA2->QA2_SEQ    := '001'
+  QA2->QA2_TEXTO  := aQa2Dados[3]
+  QA2->(MsUnLock())
+
+  RecLock('QA2', .T.)
+  QA2->QA2_FILIAL := aQa2Dados[1]
+  QA2->QA2_CHAVE  := aQa2Dados[2]
+  QA2->QA2_ESPEC  := 'REV'
+  QA2->QA2_SEQ    := '001'
+  QA2->QA2_TEXTO  := 'Migração entre sistemas (Se Suite para Protheus): documento revisado       '
+  QA2->(MsUnLock())
+
+  RecLock('QA2', .T.)
+  QA2->QA2_FILIAL := aQa2Dados[1]
+  QA2->QA2_CHAVE  := aQa2Dados[2]
+  QA2->QA2_ESPEC  := 'REV'
+  QA2->QA2_SEQ    := '002'
+  QA2->QA2_TEXTO  := ' para ajuste na codificação do arquivo eletrônico, bem como adequação      '
+  QA2->(MsUnLock())
+
+  RecLock('QA2', .T.)
+  QA2->QA2_FILIAL := aQa2Dados[1]
+  QA2->QA2_CHAVE  := aQa2Dados[2]
+  QA2->QA2_ESPEC  := 'REV'
+  QA2->QA2_SEQ    := '003'
+  QA2->QA2_TEXTO  := ' de informações necessárias.                                               '
+  QA2->(MsUnLock())
+Return
